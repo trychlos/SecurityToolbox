@@ -1,33 +1,34 @@
 # @(#) test password against a Web site
 #
-# @(-) --[no]help                  print this message, and exit [${help}]
-# @(-) --[no]colored               color the output depending of the message level [${colored}]
-# @(-) --[no]dummy                 dummy run [${dummy}]
-# @(-) --[no]verbose               run verbosely [${verbose}]
-# @(-) --url=<name>                URL of the web site [${url}]
-# @(-) --pwdfile=<filename[,...]>  path of the file which contains the passwords to be tested, may be specified several times or as a comma-separated list [${pwdfile}]
-# @(-) --pwdmax=<count>            max count of passwords to be tested, -1 is unlimited [${pwdmax}]
-# @(-) --loginfile=<filename>      path of the file which contains the logins to be tested [${loginfile}]
-# @(-) --loginmax=<count>          max count of logins to be tested, -1 is unlimited [${loginmax}]
+# @(-) --[no]help                      print this message, and exit [${help}]
+# @(-) --[no]colored                   color the output depending of the message level [${colored}]
+# @(-) --[no]dummy                     dummy run [${dummy}]
+# @(-) --[no]verbose                   run verbosely [${verbose}]
+# @(-) --url=<name>                    URL of the web site [${url}]
+# @(-) --pwdtext=<text>                a single password to be tested [${pwdtext}]
+# @(-) --pwdfile=<filename[,...]>      path of the file which contains the passwords to be tested, may be specified several times or as a comma-separated list [${pwdfile}]
+# @(-) --pwdmax=<count>                max count of passwords to be tested, -1 is unlimited [${pwdmax}]
+# @(-) --logintext=<text>              a single login name to be tested [${logintext}]
+# @(-) --loginfile=<filename>[,...]    path of the file which contains the logins to be tested, may be specified several times or as a comma-separated list [${loginfile}]
+# @(-) --loginmax=<count>              max count of logins to be tested, -1 is unlimited [${loginmax}]
 #
 # @(@) Note 1: The default passwords file may be invoked as '--pwdfile=DEFAULT' to be added to another (maybe personalized) passwords file.
 #
-# TheToolsProject - Tools System and Working Paradigm for IT Production
-# Copyright (©) 1998-2023 Pierre Wieser (see AUTHORS)
-# Copyright (©) 2023-2025 PWI Consulting
+# SecurityToolbox - A security toolbox as a TTP extension
+# Copyright (©) 2025 PWI Consulting
 #
-# TheToolsProject is free software; you can redistribute it and/or
+# SecurityToolbox is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License as
 # published by the Free Software Foundation; either version 2 of the
 # License, or (at your option) any later version.
 #
-# TheToolsProject is distributed in the hope that it will be useful,
+# SecurityToolbox is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with TheToolsProject; see the file COPYING. If not,
+# along with SecurityToolbox; see the file COPYING. If not,
 # see <http://www.gnu.org/licenses/>.
 
 
@@ -36,6 +37,7 @@ use utf8;
 use warnings;
 
 use TTP::Path;
+use TTP::Security;
 
 my $defaults = {
 	help => 'no',
@@ -44,15 +46,19 @@ my $defaults = {
 	verbose => 'no',
 	loginfile => '',
 	loginmax => -1,
+	logintext => '',
 	pwdfile => 'TTP://libexec/sec/1000000-most-common-passwords.txt',
 	pwdmax => -1,
+	pwdtext => '',
 	url => ''
 };
 
-my $opt_loginfile = $defaults->{loginfile};
+my @opt_loginfiles = ();
 my $opt_loginmax = $defaults->{loginmax};
+my $opt_logintext = $defaults->{logintext};
 my @opt_pwdfiles = ();
 my $opt_pwdmax = $defaults->{pwdmax};
+my $opt_pwdtext = $defaults->{pwdtext};
 my $opt_url = $defaults->{url};
 
 # -------------------------------------------------------------------------------------------------
@@ -62,18 +68,26 @@ sub tryPasswords {
 	msgOut( "testing url $opt_url" );
 	my $found = false;
 	my $count = 0;
-	open( my $fh, '<:encoding(UTF-8)', $opt_loginfile ) or msgErr( "$opt_loginfile: $!" );
-	if( !TTP::errs()){
-		while( my $login = <$fh> ){
-			chomp $login;
-			$count += 1;
-			if( $opt_loginmax == -1 || $count <= $opt_loginmax ){
-				$found = tryPasswordsWithLogin( $login );
-				if( $found ){
-					msgOut( "success: $login" );
+	if( $opt_logintext ){
+		$count += 1;
+		$found = tryPasswordsWithLogin( $opt_logintext );
+	}
+	if( scalar @opt_loginfiles && !$found ){
+		foreach my $file ( @opt_loginfiles ){
+			open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
+			if( !TTP::errs()){
+				while( my $login = <$fh> ){
+					chomp $login;
+					$count += 1;
+					if( $opt_loginmax == -1 || $count <= $opt_loginmax ){
+						$found = tryPasswordsWithLogin( $login );
+						if( $found ){
+							msgOut( "success: $login" );
+						}
+					}
+					last if $found;
 				}
 			}
-			last if $found;
 		}
 	}
 	msgOut( "found=".( $found ? 'true' : 'false' ));
@@ -91,19 +105,39 @@ sub tryPasswordsWithLogin {
 	my $found = false;
 	my $count = 0;
 	msgVerbose( "trying login='$login'" );
-	foreach my $file ( @opt_pwdfiles ){
-		open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
-		if( !TTP::errs()){
-			while( my $pwd = <$fh> ){
-				$count += 1;
-				if( $opt_pwdmax == -1 || $count <= $opt_pwdmax ){
-					chomp $pwd;
-					msgVerbose( "trying password='$pwd' (count=$count)" );
+	if( $opt_pwdtext ){
+		$count += 1;
+		$found = tryPasswordsWithPwd( $login, $opt_pwdtext );
+	}
+	if( !$found && scalar @opt_pwdfiles ){
+		foreach my $file ( @opt_pwdfiles ){
+			open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
+			if( !TTP::errs()){
+				while( my $pwd = <$fh> ){
+					$count += 1;
+					if( $opt_pwdmax == -1 || $count <= $opt_pwdmax ){
+						chomp $pwd;
+						$found = tryPasswordsWithPwd( $login, $pwd );
+					}
+					last if $found;
 				}
-				last if $found;
 			}
 		}
 	}
+	return $found;
+}
+
+# -------------------------------------------------------------------------------------------------
+# try the given login and passwords
+# (I):
+# - the login
+# - the password
+# (O):
+# - returns true if a password is successful
+
+sub tryPasswordsWithPwd {
+	my ( $login, $password ) = @_;
+	my $found = TTP::Security::loginTo( $login, $password );
 	return $found;
 }
 
@@ -116,10 +150,12 @@ if( !GetOptions(
 	"colored!"				=> sub { $ep->runner()->colored( @_ ); },
 	"dummy!"				=> sub { $ep->runner()->dummy( @_ ); },
 	"verbose!"				=> sub { $ep->runner()->verbose( @_ ); },
-	"loginfile=s"			=> \$opt_loginfile,
+	"loginfile=s"			=> \@opt_loginfiles,
 	"loginmax=i"			=> \$opt_loginmax,
+	"logintext=s"			=> \$opt_logintext,
 	"pwdfile=s"				=> \@opt_pwdfiles,
 	"pwdmax=i"				=> \$opt_pwdmax,
+	"pwdtext=s"				=> \$opt_pwdtext,
 	"url=s"					=> \$opt_url )){
 
 		msgOut( "try '".$ep->runner()->command()." ".$ep->runner()->verb()." --help' to get full usage syntax" );
@@ -134,22 +170,39 @@ if( $ep->runner()->help()){
 msgVerbose( "got colored='".( $ep->runner()->colored() ? 'true':'false' )."'" );
 msgVerbose( "got dummy='".( $ep->runner()->dummy() ? 'true':'false' )."'" );
 msgVerbose( "got verbose='".( $ep->runner()->verbose() ? 'true':'false' )."'" );
-msgVerbose( "got loginfile='$opt_loginfile'" );
+@opt_loginfiles= split( /,/, join( ',', @opt_loginfiles ));
+msgVerbose( "got loginfiles=[".join( ',', @opt_loginfiles )."]" );
 msgVerbose( "got loginmax='$opt_loginmax'" );
+msgVerbose( "got logintext='$opt_logintext'" );
 @opt_pwdfiles= split( /,/, join( ',', @opt_pwdfiles ));
-msgVerbose( "got pwdfiles='".join( ',', @opt_pwdfiles )."'" );
+msgVerbose( "got pwdfiles=[".join( ',', @opt_pwdfiles )."]" );
 msgVerbose( "got pwdmax='$opt_pwdmax'" );
+msgVerbose( "got pwdtext='$opt_pwdtext'" );
 msgVerbose( "got url='$opt_url'" );
 
 # must have --url option
 msgErr( "'--url' option is mandatory, but is not specified" ) if !$opt_url;
 
-# must have --loginfile option
-msgErr( "'--loginfile' option is mandatory, but is not specified" ) if !$opt_loginfile;
-msgErr( "$opt_loginfile: file not found or not readable" ) if $opt_loginfile && ! -r $opt_loginfile;
+# must have at least one --loginfile or --logintext options
+print Dumper( @opt_loginfiles );
+msgVerbose( "count ".scalar @opt_loginfiles );
+if( scalar @opt_loginfiles ){
+	my @files = ();
+	foreach my $file ( @opt_loginfiles ){
+		$file = TTP::Path::getResource( $file );	
+		if( -r $file ){
+			push( @files, $file );
+		} else {
+			msgErr( "$file: file not found or not readable" );
+		}
+	}
+	@opt_loginfiles = @files;
+} elsif( !$opt_logintext ){
+	msgErr( "at least one login name must be specified, either with '--logintext' or '--loginfile' options, none found" );
+}
 
-# must have at least one --pwdfile option
-if( $#opt_pwdfiles ){
+# must have at least one --pwdfile or --pwdtext options
+if( scalar @opt_pwdfiles ){
 	my @files = ();
 	foreach my $file ( @opt_pwdfiles ){
 		$file = $defaults->{pwdfile} if $file eq 'DEFAULT';
@@ -161,8 +214,8 @@ if( $#opt_pwdfiles ){
 		}
 	}
 	@opt_pwdfiles = @files;
-} else {
-	msgErr( "at least one '--pwdfile' option is mandatory, but none not specified" );
+} elsif( !$opt_pwdtext ){
+	msgErr( "at least one password must be specified, either with '--pwdtext' or '--pwdfile' options, none found" );
 }
 
 if( !TTP::errs()){
