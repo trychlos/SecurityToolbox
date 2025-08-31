@@ -14,6 +14,7 @@
 # @(-) --loginname=<name>              name of the field which contains the login [${loginname}]
 # @(-) --loginmax=<count>              max count of logins to be tested, -1 is unlimited [${loginmax}]
 # @(-) --requesttoken=<name>           the name of the request verification token field [${requesttoken}]
+# @(-) --delayms=<delayms>             count of milliseconds between each try [${delayms}]
 #
 # @(@) Note 1: The default passwords file may be invoked as '--pwdfile=DEFAULT' to be added to another (maybe personalized) passwords file.
 #
@@ -39,6 +40,8 @@ use strict;
 use utf8;
 use warnings;
 
+use Time::HiRes qw( usleep );
+
 use TTP::Path;
 use TTP::Security;
 
@@ -47,6 +50,7 @@ my $defaults = {
 	colored => 'no',
 	dummy => 'no',
 	verbose => 'no',
+	delayms => 0,
 	loginfile => '',
 	loginmax => -1,
 	loginname => 'login',
@@ -59,6 +63,7 @@ my $defaults = {
 	url => ''
 };
 
+my $opt_delayms = $defaults->{delayms};
 my @opt_loginfiles = ();
 my $opt_loginmax = $defaults->{loginmax};
 my $opt_loginname = $defaults->{loginname};
@@ -69,6 +74,8 @@ my $opt_pwdname = $defaults->{pwdname};
 my $opt_pwdtext = $defaults->{pwdtext};
 my $opt_requesttoken = $defaults->{requesttoken};
 my $opt_url = $defaults->{url};
+
+my $total_count = 0;
 
 # -------------------------------------------------------------------------------------------------
 # this is the main loop on the to-be-tested login names and passwords
@@ -151,6 +158,13 @@ sub tryPasswordsWithPwd {
 		password => $opt_pwdname,
 		requestToken => $opt_requesttoken
 	});
+	$total_count += 1;
+	msgVerbose( "total_count=$total_count ".( $found ? 'success' : 'error' ));
+	# sleep for the given time
+	if( $opt_delayms ){
+		msgVerbose( "sleepig for $opt_delayms ms..." );
+		usleep( 1000*$opt_delayms );
+	}
 	return $found;
 }
 
@@ -163,6 +177,7 @@ if( !GetOptions(
 	"colored!"				=> sub { $ep->runner()->colored( @_ ); },
 	"dummy!"				=> sub { $ep->runner()->dummy( @_ ); },
 	"verbose!"				=> sub { $ep->runner()->verbose( @_ ); },
+	"delayms=i"				=> \$opt_delayms,
 	"loginfile=s"			=> \@opt_loginfiles,
 	"loginmax=i"			=> \$opt_loginmax,
 	"loginname=s"			=> \$opt_loginname,
@@ -186,6 +201,7 @@ if( $ep->runner()->help()){
 msgVerbose( "got colored='".( $ep->runner()->colored() ? 'true':'false' )."'" );
 msgVerbose( "got dummy='".( $ep->runner()->dummy() ? 'true':'false' )."'" );
 msgVerbose( "got verbose='".( $ep->runner()->verbose() ? 'true':'false' )."'" );
+msgVerbose( "got delayms='$opt_delayms'" );
 @opt_loginfiles= split( /,/, join( ',', @opt_loginfiles ));
 msgVerbose( "got loginfiles=[".join( ',', @opt_loginfiles )."]" );
 msgVerbose( "got loginmax='$opt_loginmax'" );
@@ -235,6 +251,11 @@ if( scalar @opt_pwdfiles ){
 	@opt_pwdfiles = @files;
 } elsif( !$opt_pwdtext ){
 	msgErr( "at least one password must be specified, either with '--pwdtext' or '--pwdfile' options, none found" );
+}
+
+# if a delay is specified, must be greater than zero
+if( $opt_delayms ){
+	msgErr( "when specified, delay(ms) must be greater than zero, got $opt_delayms" ) if 0+$opt_delayms < 0;
 }
 
 if( !TTP::errs()){

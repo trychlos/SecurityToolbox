@@ -6,7 +6,7 @@
 
     Release date: 
 
-    - 
+    - sec.pl test-passwords have a verbose total count and a sleep parameter
 
 ### 1.0.0
 
