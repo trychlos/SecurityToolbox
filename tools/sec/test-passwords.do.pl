@@ -7,10 +7,13 @@
 # @(-) --url=<name>                    URL of the web site [${url}]
 # @(-) --pwdtext=<text>                a single password to be tested [${pwdtext}]
 # @(-) --pwdfile=<filename[,...]>      path of the file which contains the passwords to be tested, may be specified several times or as a comma-separated list [${pwdfile}]
+# @(-) --pwdname=<name>                name of the field which contains the password [${pwdname}]
 # @(-) --pwdmax=<count>                max count of passwords to be tested, -1 is unlimited [${pwdmax}]
 # @(-) --logintext=<text>              a single login name to be tested [${logintext}]
 # @(-) --loginfile=<filename>[,...]    path of the file which contains the logins to be tested, may be specified several times or as a comma-separated list [${loginfile}]
+# @(-) --loginname=<name>              name of the field which contains the login [${loginname}]
 # @(-) --loginmax=<count>              max count of logins to be tested, -1 is unlimited [${loginmax}]
+# @(-) --requesttoken=<name>           the name of the request verification token field [${requesttoken}]
 #
 # @(@) Note 1: The default passwords file may be invoked as '--pwdfile=DEFAULT' to be added to another (maybe personalized) passwords file.
 #
@@ -46,19 +49,25 @@ my $defaults = {
 	verbose => 'no',
 	loginfile => '',
 	loginmax => -1,
+	loginname => 'login',
 	logintext => '',
 	pwdfile => 'TTP://libexec/sec/1000000-most-common-passwords.txt',
 	pwdmax => -1,
+	pwdname => 'password',
 	pwdtext => '',
+	requesttoken => '',
 	url => ''
 };
 
 my @opt_loginfiles = ();
 my $opt_loginmax = $defaults->{loginmax};
+my $opt_loginname = $defaults->{loginname};
 my $opt_logintext = $defaults->{logintext};
 my @opt_pwdfiles = ();
 my $opt_pwdmax = $defaults->{pwdmax};
+my $opt_pwdname = $defaults->{pwdname};
 my $opt_pwdtext = $defaults->{pwdtext};
+my $opt_requesttoken = $defaults->{requesttoken};
 my $opt_url = $defaults->{url};
 
 # -------------------------------------------------------------------------------------------------
@@ -137,7 +146,11 @@ sub tryPasswordsWithLogin {
 
 sub tryPasswordsWithPwd {
 	my ( $login, $password ) = @_;
-	my $found = TTP::Security::loginTo( $login, $password );
+	my $found = TTP::Security::loginTo( $opt_url, $login, $password, {
+		login => $opt_loginname,
+		password => $opt_pwdname,
+		requestToken => $opt_requesttoken
+	});
 	return $found;
 }
 
@@ -152,10 +165,13 @@ if( !GetOptions(
 	"verbose!"				=> sub { $ep->runner()->verbose( @_ ); },
 	"loginfile=s"			=> \@opt_loginfiles,
 	"loginmax=i"			=> \$opt_loginmax,
+	"loginname=s"			=> \$opt_loginname,
 	"logintext=s"			=> \$opt_logintext,
 	"pwdfile=s"				=> \@opt_pwdfiles,
 	"pwdmax=i"				=> \$opt_pwdmax,
+	"pwdname=s"				=> \$opt_pwdname,
 	"pwdtext=s"				=> \$opt_pwdtext,
+	"requesttoken=s"		=> \$opt_requesttoken,
 	"url=s"					=> \$opt_url )){
 
 		msgOut( "try '".$ep->runner()->command()." ".$ep->runner()->verb()." --help' to get full usage syntax" );
@@ -173,11 +189,14 @@ msgVerbose( "got verbose='".( $ep->runner()->verbose() ? 'true':'false' )."'" );
 @opt_loginfiles= split( /,/, join( ',', @opt_loginfiles ));
 msgVerbose( "got loginfiles=[".join( ',', @opt_loginfiles )."]" );
 msgVerbose( "got loginmax='$opt_loginmax'" );
+msgVerbose( "got loginname='$opt_loginname'" );
 msgVerbose( "got logintext='$opt_logintext'" );
 @opt_pwdfiles= split( /,/, join( ',', @opt_pwdfiles ));
 msgVerbose( "got pwdfiles=[".join( ',', @opt_pwdfiles )."]" );
 msgVerbose( "got pwdmax='$opt_pwdmax'" );
+msgVerbose( "got pwdname='$opt_pwdname'" );
 msgVerbose( "got pwdtext='$opt_pwdtext'" );
+msgVerbose( "got requesttoken='$opt_requesttoken'" );
 msgVerbose( "got url='$opt_url'" );
 
 # must have --url option
