@@ -7,6 +7,7 @@
     Release date: 
 
     - sec.pl test-passwords have a verbose total count and a sleep parameter
+    - Security::loginTo() improve verbosity
 
 ### 1.0.0
 

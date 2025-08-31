@@ -92,10 +92,10 @@ sub loginTo {
 		$parms->{$opts->{requestToken}} = $token;
 	}
 	$response = $ua->post( $url, $parms );
-	print STDERR "headers ".Dumper( $response->headers());
-	print STDERR "status ".Dumper( $response->status_line );
+	#print STDERR "headers ".Dumper( $response->headers());
+	#print STDERR "status ".Dumper( $response->status_line );
 	my $cookie_line = $response->header( $cookie_ref );
-	print STDERR "cookie_line ".Dumper( $cookie_line );
+	#print STDERR "cookie_line ".Dumper( $cookie_line );
 	# if we have got a cookie to be set, then build the Cookie object
 	if( $cookie_line ){
 		# make sure the received cookie is not excluded
@@ -113,7 +113,7 @@ sub loginTo {
 		$cookie_jar->extract_cookies( $response );
 		#print STDERR "cookie_jar ".Dumper( $cookie_jar );
 	}
-	msgVerbose( $cookie_jar ? "success" : "error" );
+	msgVerbose( __PACKAGE__."::loginTo() ".( $cookie_jar ? "success" : "error" ));
 	return $cookie_jar;
 }
 
