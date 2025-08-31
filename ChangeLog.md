@@ -2,9 +2,9 @@
 
 ## ChangeLog
 
-### 1.0.0-rc.0
+### 1.0.0
 
-    Release date: 
+    Release date: 2025- 8-31
 
     - Initial release
 
