@@ -5,10 +5,12 @@
 # @(-) --[no]dummy                     dummy run [${dummy}]
 # @(-) --[no]verbose                   run verbosely [${verbose}]
 # @(-) --url=<name>                    URL of the web site [${url}]
+# @(-) --[no]pwdfirst                  whether to test by password first, then by login [${pwdfirst}]
 # @(-) --pwdtext=<text>                a single password to be tested [${pwdtext}]
 # @(-) --pwdfile=<filename[,...]>      path of the file which contains the passwords to be tested, may be specified several times or as a comma-separated list [${pwdfile}]
 # @(-) --pwdname=<name>                name of the field which contains the password [${pwdname}]
 # @(-) --pwdmax=<count>                max count of passwords to be tested, -1 is unlimited [${pwdmax}]
+# @(-) --[no]loginfirst                whether to test by login first, then by password [${loginfirst}]
 # @(-) --logintext=<text>              a single login name to be tested [${logintext}]
 # @(-) --loginfile=<filename>[,...]    path of the file which contains the logins to be tested, may be specified several times or as a comma-separated list [${loginfile}]
 # @(-) --loginname=<name>              name of the field which contains the login [${loginname}]
@@ -52,10 +54,12 @@ my $defaults = {
 	verbose => 'no',
 	delayms => 0,
 	loginfile => '',
+	loginfirst => 'yes',
 	loginmax => -1,
 	loginname => 'login',
 	logintext => '',
 	pwdfile => 'TTP://libexec/sec/1000000-most-common-passwords.txt',
+	pwdfirst => 'no',
 	pwdmax => -1,
 	pwdname => 'password',
 	pwdtext => '',
@@ -65,23 +69,28 @@ my $defaults = {
 
 my $opt_delayms = $defaults->{delayms};
 my @opt_loginfiles = ();
+my $opt_loginfirst = true;
 my $opt_loginmax = $defaults->{loginmax};
 my $opt_loginname = $defaults->{loginname};
 my $opt_logintext = $defaults->{logintext};
 my @opt_pwdfiles = ();
+my $opt_pwdfirst = false;
 my $opt_pwdmax = $defaults->{pwdmax};
 my $opt_pwdname = $defaults->{pwdname};
 my $opt_pwdtext = $defaults->{pwdtext};
 my $opt_requesttoken = $defaults->{requesttoken};
 my $opt_url = $defaults->{url};
 
+my $opt_loginfirst_set = false;
+my $opt_pwdfirst_set = false;
 my $total_count = 0;
 
 # -------------------------------------------------------------------------------------------------
 # this is the main loop on the to-be-tested login names and passwords
+# test by login first which may be not the most efficient when we want test several login
 
-sub tryPasswords {
-	msgOut( "testing url $opt_url" );
+sub tryPasswordsByLogin {
+	msgOut( "testing '$opt_url' URL by login first" );
 	my $found = false;
 	my $count = 0;
 	if( $opt_logintext ){
@@ -110,6 +119,39 @@ sub tryPasswords {
 }
 
 # -------------------------------------------------------------------------------------------------
+# this is the main loop on the to-be-tested login names and passwords
+# test by password first: test each login for each given password
+
+sub tryPasswordsByPassword {
+	msgOut( "testing '$opt_url' URL by password first" );
+	my $found = false;
+	my $count = 0;
+	if( $opt_pwdtext ){
+		$count += 1;
+		$found = tryPasswordsWithPassword( $opt_pwdtext );
+	}
+	if( scalar @opt_pwdfiles && !$found ){
+		foreach my $file ( @opt_pwdfiles ){
+			open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
+			if( !TTP::errs()){
+				while( my $pwd = <$fh> ){
+					chomp $pwd;
+					$count += 1;
+					if( $opt_pwdmax == -1 || $count <= $opt_pwdmax ){
+						$found = tryPasswordsWithPassword( $pwd );
+						if( $found ){
+							msgOut( "success: $pwd" );
+						}
+					}
+					last if $found;
+				}
+			}
+		}
+	}
+	msgOut( "found=".( $found ? 'true' : 'false' ));
+}
+
+# -------------------------------------------------------------------------------------------------
 # try all passwords for the given login
 # (I):
 # - the login
@@ -123,7 +165,7 @@ sub tryPasswordsWithLogin {
 	msgVerbose( "trying login='$login'" );
 	if( $opt_pwdtext ){
 		$count += 1;
-		$found = tryPasswordsWithPwd( $login, $opt_pwdtext );
+		$found = tryPasswordsWithLoginPassword( $login, $opt_pwdtext );
 	}
 	if( !$found && scalar @opt_pwdfiles ){
 		foreach my $file ( @opt_pwdfiles ){
@@ -133,7 +175,41 @@ sub tryPasswordsWithLogin {
 					$count += 1;
 					if( $opt_pwdmax == -1 || $count <= $opt_pwdmax ){
 						chomp $pwd;
-						$found = tryPasswordsWithPwd( $login, $pwd );
+						$found = tryPasswordsWithLoginPassword( $login, $pwd );
+					}
+					last if $found;
+				}
+			}
+		}
+	}
+	return $found;
+}
+
+# -------------------------------------------------------------------------------------------------
+# try all logins for the given password
+# (I):
+# - the password
+# (O):
+# - returns true if a login is successful
+
+sub tryPasswordsWithPassword {
+	my ( $password ) = @_;
+	my $found = false;
+	my $count = 0;
+	msgVerbose( "trying password='$password'" );
+	if( $opt_logintext ){
+		$count += 1;
+		$found = tryPasswordsWithLoginPassword( $opt_logintext, $password );
+	}
+	if( !$found && scalar @opt_loginfiles ){
+		foreach my $file ( @opt_loginfiles ){
+			open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
+			if( !TTP::errs()){
+				while( my $login = <$fh> ){
+					$count += 1;
+					if( $opt_loginmax == -1 || $count <= $opt_loginmax ){
+						chomp $login;
+						$found = tryPasswordsWithLoginPassword( $login, $password );
 					}
 					last if $found;
 				}
@@ -151,7 +227,7 @@ sub tryPasswordsWithLogin {
 # (O):
 # - returns true if a password is successful
 
-sub tryPasswordsWithPwd {
+sub tryPasswordsWithLoginPassword {
 	my ( $login, $password ) = @_;
 	my $found = TTP::Security::loginTo( $opt_url, $login, $password, {
 		login => $opt_loginname,
@@ -179,10 +255,21 @@ if( !GetOptions(
 	"verbose!"				=> sub { $ep->runner()->verbose( @_ ); },
 	"delayms=i"				=> \$opt_delayms,
 	"loginfile=s"			=> \@opt_loginfiles,
+	"loginfirst!"			=> sub {
+		my( $name, $value ) = @_;
+		$opt_loginfirst = $value;
+		$opt_loginfirst_set = true;
+	},
 	"loginmax=i"			=> \$opt_loginmax,
 	"loginname=s"			=> \$opt_loginname,
 	"logintext=s"			=> \$opt_logintext,
 	"pwdfile=s"				=> \@opt_pwdfiles,
+	"pwdfirst!"				=> sub {
+		my( $name, $value ) = @_;
+		$opt_pwdfirst = $value;
+		$opt_pwdfirst_set = true;
+		$opt_loginfirst = false if !$opt_loginfirst_set;
+	},
 	"pwdmax=i"				=> \$opt_pwdmax,
 	"pwdname=s"				=> \$opt_pwdname,
 	"pwdtext=s"				=> \$opt_pwdtext,
@@ -204,11 +291,13 @@ msgVerbose( "got verbose='".( $ep->runner()->verbose() ? 'true':'false' )."'" );
 msgVerbose( "got delayms='$opt_delayms'" );
 @opt_loginfiles= split( /,/, join( ',', @opt_loginfiles ));
 msgVerbose( "got loginfiles=[".join( ',', @opt_loginfiles )."]" );
+msgVerbose( "got loginfirst='".( $opt_loginfirst ? 'true':'false' )."'" );
 msgVerbose( "got loginmax='$opt_loginmax'" );
 msgVerbose( "got loginname='$opt_loginname'" );
 msgVerbose( "got logintext='$opt_logintext'" );
 @opt_pwdfiles= split( /,/, join( ',', @opt_pwdfiles ));
 msgVerbose( "got pwdfiles=[".join( ',', @opt_pwdfiles )."]" );
+msgVerbose( "got pwdfirst='".( $opt_pwdfirst ? 'true':'false' )."'" );
 msgVerbose( "got pwdmax='$opt_pwdmax'" );
 msgVerbose( "got pwdname='$opt_pwdname'" );
 msgVerbose( "got pwdtext='$opt_pwdtext'" );
@@ -219,8 +308,6 @@ msgVerbose( "got url='$opt_url'" );
 msgErr( "'--url' option is mandatory, but is not specified" ) if !$opt_url;
 
 # must have at least one --loginfile or --logintext options
-print Dumper( @opt_loginfiles );
-msgVerbose( "count ".scalar @opt_loginfiles );
 if( scalar @opt_loginfiles ){
 	my @files = ();
 	foreach my $file ( @opt_loginfiles ){
@@ -258,8 +345,21 @@ if( $opt_delayms ){
 	msgErr( "when specified, delay(ms) must be greater than zero, got $opt_delayms" ) if 0+$opt_delayms < 0;
 }
 
+# --loginfirst and --pwdfirst are mutually exclusive - one and only one must be set
+my $countfirst = 0;
+$countfirst += 1 if $opt_loginfirst;
+$countfirst += 1 if $opt_pwdfirst;
+if( $countfirst != 1 ){
+	if( $countfirst == 0 ){
+		msgErr( "one and only one of '--loginfirst' or '--pwdfirst' options must be specified, none found" );
+	} else {
+		msgErr( "one and only one of '--loginfirst' or '--pwdfirst' options must be specified, both found" );
+	}
+}
+
 if( !TTP::errs()){
-	tryPasswords();
+	tryPasswordsByLogin() if $opt_loginfirst;
+	tryPasswordsByPassword() if $opt_pwdfirst;
 }
 
 TTP::exit();

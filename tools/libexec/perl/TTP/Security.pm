@@ -63,7 +63,7 @@ sub loginTo {
 	my ( $url, $login, $password, $opts ) = @_;
 	my $cookie_jar = false;
 	$opts //= {};
-	msgVerbose( __PACKAGE__."loginTo() login='$login' password='$password'" );
+	msgVerbose( __PACKAGE__."::loginTo() login='$login' password='$password'" );
 	my $ua = LWP::UserAgent->new();
 	my $response;
 	my $token;

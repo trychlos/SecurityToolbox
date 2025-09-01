@@ -9,6 +9,7 @@
     - sec.pl test-passwords have a verbose total count and a sleep parameter
     - Security::loginTo() improve verbosity
     - Align the version numbering scheme to TTP's one
+    - sec.pl test-passwords can choose between by login first or by password first
 
 ### 1.0.0
 
