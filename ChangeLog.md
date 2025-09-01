@@ -2,7 +2,7 @@
 
 ## ChangeLog
 
-### 4.0.0-rc.0
+### 4.0.0-rc.1
 
     Release date: 
 
@@ -10,6 +10,7 @@
     - Security::loginTo() improve verbosity
     - Align the version numbering scheme to TTP's one
     - sec.pl test-passwords can choose between by login first or by password first
+    - sec.pl test-passwords can slurp input files to be resilient to network errors
 
 ### 1.0.0
 

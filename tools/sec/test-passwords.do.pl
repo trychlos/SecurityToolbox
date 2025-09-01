@@ -10,11 +10,13 @@
 # @(-) --pwdfile=<filename[,...]>      path of the file which contains the passwords to be tested, may be specified several times or as a comma-separated list [${pwdfile}]
 # @(-) --pwdname=<name>                name of the field which contains the password [${pwdname}]
 # @(-) --pwdmax=<count>                max count of passwords to be tested, -1 is unlimited [${pwdmax}]
+# @(-) --[no]pwdslurp                  whether to slurp the passwords file [${pwdslurp}]
 # @(-) --[no]loginfirst                whether to test by login first, then by password [${loginfirst}]
 # @(-) --logintext=<text>              a single login name to be tested [${logintext}]
 # @(-) --loginfile=<filename>[,...]    path of the file which contains the logins to be tested, may be specified several times or as a comma-separated list [${loginfile}]
 # @(-) --loginname=<name>              name of the field which contains the login [${loginname}]
 # @(-) --loginmax=<count>              max count of logins to be tested, -1 is unlimited [${loginmax}]
+# @(-) --[no]loginslurp                whether to slurp the logins file [${loginslurp}]
 # @(-) --requesttoken=<name>           the name of the request verification token field [${requesttoken}]
 # @(-) --delayms=<delayms>             count of milliseconds between each try [${delayms}]
 #
@@ -42,6 +44,7 @@ use strict;
 use utf8;
 use warnings;
 
+use Path::Tiny;
 use Time::HiRes qw( usleep );
 
 use TTP::Path;
@@ -57,11 +60,13 @@ my $defaults = {
 	loginfirst => 'yes',
 	loginmax => -1,
 	loginname => 'login',
+	loginslurp => 'no',
 	logintext => '',
 	pwdfile => 'TTP://libexec/sec/1000000-most-common-passwords.txt',
 	pwdfirst => 'no',
 	pwdmax => -1,
 	pwdname => 'password',
+	pwdslurp => 'no',
 	pwdtext => '',
 	requesttoken => '',
 	url => ''
@@ -72,11 +77,13 @@ my @opt_loginfiles = ();
 my $opt_loginfirst = true;
 my $opt_loginmax = $defaults->{loginmax};
 my $opt_loginname = $defaults->{loginname};
+my $opt_loginslurp = false;
 my $opt_logintext = $defaults->{logintext};
 my @opt_pwdfiles = ();
 my $opt_pwdfirst = false;
 my $opt_pwdmax = $defaults->{pwdmax};
 my $opt_pwdname = $defaults->{pwdname};
+my $opt_pwdslurp = false;
 my $opt_pwdtext = $defaults->{pwdtext};
 my $opt_requesttoken = $defaults->{requesttoken};
 my $opt_url = $defaults->{url};
@@ -87,11 +94,12 @@ my $total_count = 0;
 
 # -------------------------------------------------------------------------------------------------
 # this is the main loop on the to-be-tested login names and passwords
-# test by login first which may be not the most efficient when we want test several login
+# test by login first which may be not the most efficient when we want test several logins
 
 sub tryPasswordsByLogin {
 	msgOut( "testing '$opt_url' URL by login first" );
 	my $found = false;
+	my $end = false;
 	my $count = 0;
 	if( $opt_logintext ){
 		$count += 1;
@@ -99,20 +107,40 @@ sub tryPasswordsByLogin {
 	}
 	if( scalar @opt_loginfiles && !$found ){
 		foreach my $file ( @opt_loginfiles ){
-			open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
-			if( !TTP::errs()){
-				while( my $login = <$fh> ){
-					chomp $login;
+			if( $opt_loginslurp ){
+				my @logins = path( $file )->lines_utf8;
+				foreach my $login ( @logins ){
 					$count += 1;
 					if( $opt_loginmax == -1 || $count <= $opt_loginmax ){
+						chomp $login;
 						$found = tryPasswordsWithLogin( $login );
 						if( $found ){
 							msgOut( "success: $login" );
 						}
+					} else {
+						$end = true;
 					}
-					last if $found;
+					last if $found or $end;
+				}
+			} else {
+				open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
+				if( !TTP::errs()){
+					while( my $login = <$fh> ){
+						$count += 1;
+						if( $opt_loginmax == -1 || $count <= $opt_loginmax ){
+							chomp $login;
+							$found = tryPasswordsWithLogin( $login );
+							if( $found ){
+								msgOut( "success: $login" );
+							}
+						} else {
+							$end = true;
+						}
+						last if $found or $end;
+					}
 				}
 			}
+			last if $found or $end;
 		}
 	}
 	msgOut( "found=".( $found ? 'true' : 'false' ));
@@ -125,6 +153,7 @@ sub tryPasswordsByLogin {
 sub tryPasswordsByPassword {
 	msgOut( "testing '$opt_url' URL by password first" );
 	my $found = false;
+	my $end = false;
 	my $count = 0;
 	if( $opt_pwdtext ){
 		$count += 1;
@@ -132,20 +161,40 @@ sub tryPasswordsByPassword {
 	}
 	if( scalar @opt_pwdfiles && !$found ){
 		foreach my $file ( @opt_pwdfiles ){
-			open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
-			if( !TTP::errs()){
-				while( my $pwd = <$fh> ){
-					chomp $pwd;
+			if( $opt_pwdslurp ){
+				my @passwords = path( $file )->lines_utf8;
+				foreach my $pwd ( @passwords ){
 					$count += 1;
 					if( $opt_pwdmax == -1 || $count <= $opt_pwdmax ){
+						chomp $pwd;
 						$found = tryPasswordsWithPassword( $pwd );
 						if( $found ){
 							msgOut( "success: $pwd" );
 						}
+					} else {
+						$end = true;
 					}
-					last if $found;
+					last if $found or $end;
+				}
+			} else {
+				open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
+				if( !TTP::errs()){
+					while( my $pwd = <$fh> ){
+						$count += 1;
+						if( $opt_pwdmax == -1 || $count <= $opt_pwdmax ){
+							chomp $pwd;
+							$found = tryPasswordsWithPassword( $pwd );
+							if( $found ){
+								msgOut( "success: $pwd" );
+							}
+						} else {
+							$end = true;
+						}
+						last if $found or $end;
+					}
 				}
 			}
+			last if $found or $end;
 		}
 	}
 	msgOut( "found=".( $found ? 'true' : 'false' ));
@@ -161,6 +210,7 @@ sub tryPasswordsByPassword {
 sub tryPasswordsWithLogin {
 	my ( $login ) = @_;
 	my $found = false;
+	my $end = false;
 	my $count = 0;
 	msgVerbose( "trying login='$login'" );
 	if( $opt_pwdtext ){
@@ -169,17 +219,34 @@ sub tryPasswordsWithLogin {
 	}
 	if( !$found && scalar @opt_pwdfiles ){
 		foreach my $file ( @opt_pwdfiles ){
-			open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
-			if( !TTP::errs()){
-				while( my $pwd = <$fh> ){
+			if( $opt_pwdslurp ){
+				my @passwords = path( $file )->lines_utf8;
+				foreach my $pwd ( @passwords ){
 					$count += 1;
 					if( $opt_pwdmax == -1 || $count <= $opt_pwdmax ){
 						chomp $pwd;
 						$found = tryPasswordsWithLoginPassword( $login, $pwd );
+					} else {
+						$end = true;
 					}
-					last if $found;
+					last if $found or $end;
+				}
+			} else {
+				open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
+				if( !TTP::errs()){
+					while( my $pwd = <$fh> ){
+						$count += 1;
+						if( $opt_pwdmax == -1 || $count <= $opt_pwdmax ){
+							chomp $pwd;
+							$found = tryPasswordsWithLoginPassword( $login, $pwd );
+						} else {
+							$end = true;
+						}
+						last if $found or $end;
+					}
 				}
 			}
+			last if $found or $end;
 		}
 	}
 	return $found;
@@ -195,6 +262,7 @@ sub tryPasswordsWithLogin {
 sub tryPasswordsWithPassword {
 	my ( $password ) = @_;
 	my $found = false;
+	my $end = false;
 	my $count = 0;
 	msgVerbose( "trying password='$password'" );
 	if( $opt_logintext ){
@@ -203,17 +271,34 @@ sub tryPasswordsWithPassword {
 	}
 	if( !$found && scalar @opt_loginfiles ){
 		foreach my $file ( @opt_loginfiles ){
-			open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
-			if( !TTP::errs()){
-				while( my $login = <$fh> ){
+			if( $opt_loginslurp ){
+				my @logins = path( $file )->lines_utf8;
+				foreach my $login ( @logins ){
 					$count += 1;
 					if( $opt_loginmax == -1 || $count <= $opt_loginmax ){
 						chomp $login;
 						$found = tryPasswordsWithLoginPassword( $login, $password );
+					} else {
+						$end = true;
 					}
-					last if $found;
+					last if $found or $end;
+				}
+			} else {
+				open( my $fh, '<:encoding(UTF-8)', $file ) or msgErr( "$file: $!" );
+				if( !TTP::errs()){
+					while( my $login = <$fh> ){
+						$count += 1;
+						if( $opt_loginmax == -1 || $count <= $opt_loginmax ){
+							chomp $login;
+							$found = tryPasswordsWithLoginPassword( $login, $password );
+						} else {
+							$end = true;
+						}
+						last if $found or $end;
+					}
 				}
 			}
+			last if $found or $end;
 		}
 	}
 	return $found;
@@ -237,7 +322,7 @@ sub tryPasswordsWithLoginPassword {
 	$total_count += 1;
 	msgVerbose( "total_count=$total_count ".( $found ? 'success' : 'error' ));
 	# sleep for the given time
-	if( $opt_delayms ){
+	if( !$found && $opt_delayms ){
 		msgVerbose( "sleepig for $opt_delayms ms..." );
 		usleep( 1000*$opt_delayms );
 	}
@@ -262,6 +347,7 @@ if( !GetOptions(
 	},
 	"loginmax=i"			=> \$opt_loginmax,
 	"loginname=s"			=> \$opt_loginname,
+	"loginslurp!"			=> \$opt_loginslurp,
 	"logintext=s"			=> \$opt_logintext,
 	"pwdfile=s"				=> \@opt_pwdfiles,
 	"pwdfirst!"				=> sub {
@@ -272,6 +358,7 @@ if( !GetOptions(
 	},
 	"pwdmax=i"				=> \$opt_pwdmax,
 	"pwdname=s"				=> \$opt_pwdname,
+	"pwdslurp!"				=> \$opt_pwdslurp,
 	"pwdtext=s"				=> \$opt_pwdtext,
 	"requesttoken=s"		=> \$opt_requesttoken,
 	"url=s"					=> \$opt_url )){
