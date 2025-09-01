@@ -1,0 +1,71 @@
+# This workflow creates a .tar.gz and a .zip packages for the latest release
+
+name: Publish a release with tar.gz and zip assets
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  pack-n-push:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Dump github context
+      run:   echo "$GITHUB_CONTEXT"
+      env:
+        GITHUB_CONTEXT: ${{ toJson(github) }}
+   
+    - name: Setup variables
+      id: vars
+      run: |
+          echo "version=$(cat .VERSION)" >> $GITHUB_OUTPUT
+          echo "tag=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+          echo "source=HEAD" >> $GITHUB_OUTPUT
+          echo "url=https://github.com/${{ github.repository }}/${{ github.event.repository.name }}" >> $GITHUB_OUTPUT
+   
+    - name: Compute package name
+      id: package
+      run: |
+          echo "package=${{ github.event.repository.name }}-${{ steps.vars.outputs.version }}" >> $GITHUB_OUTPUT
+
+    - name: Have a tar.gz
+      run: |
+        git archive --format tar.gz --prefix ${{ steps.package.outputs.package }}/ ${{ steps.vars.outputs.source }} > ${RUNNER_TEMP}/${{ steps.package.outputs.package }}.tar.gz
+        ls -l ${RUNNER_TEMP}/${{ steps.package.outputs.package }}.tar.gz
+        file ${RUNNER_TEMP}/${{ steps.package.outputs.package }}.tar.gz
+
+    - name: Check tar.gz
+      run: |
+        pwd
+        ls -l ${RUNNER_TEMP}/${{ steps.package.outputs.package }}.tar.gz
+        file ${RUNNER_TEMP}/${{ steps.package.outputs.package }}.tar.gz
+
+# happens that actions/upload-release-asset@v1 doesn't like an asset path like "${RUNNER_TEMP}/${{ steps.package.outputs.package }}.tar.gz"
+# but is satisfied with a relative path (which unfortunately led us to hardcode this relative)
+    - name: Upload tar.gz artifact
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ../../_temp/${{ steps.package.outputs.package }}.tar.gz
+        asset_name: ${{ steps.package.outputs.package }}.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Have a zip
+      run: |
+        git archive --format zip --prefix ${{ steps.package.outputs.package }}/ ${{ steps.vars.outputs.source }} > ${RUNNER_TEMP}/${{ steps.package.outputs.package }}.zip
+
+    - name: upload zip artifact
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ../../_temp/${{ steps.package.outputs.package }}.zip
+        asset_name: ${{ steps.package.outputs.package }}.zip
+        asset_content_type: application/zip
+        
